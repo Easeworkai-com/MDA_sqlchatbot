@@ -44,12 +44,11 @@ app = FastAPI()
 
 df = pd.read_excel("spend_history_v1.2.xlsx")
 
-
+# Convert columns to datetime format
 # df['PurchaseDate'] = pd.to_datetime(df['PurchaseDate'], format='%m/%d/%Y')
 # df['contractstartdate'] = pd.to_datetime(df['contractstartdate'], format='%m/%d/%Y')
 # df['contractenddate'] = pd.to_datetime(df['contractenddate'], format='%m/%d/%Y')
 # df['DeliveryDate'] = pd.to_datetime(df['DeliveryDate'], format='%m/%d/%Y')
-
 
 connection = sqlite3.connect("spend.db")
 df.to_sql(name="PurchaseOrderCatalog", con=connection, if_exists='replace')
@@ -60,10 +59,8 @@ class Event:
     timestamp: str
     text: str
 
-
 def _current_time() -> str:
     return datetime.now(timezone.utc).isoformat()
-
 
 class LLMCallbackHandler(BaseCallbackHandler):
     def __init__(self, log_path: Path):
@@ -101,7 +98,6 @@ class LLMCallbackHandler(BaseCallbackHandler):
 # )
 
 # OpenAI
-
 
 llm = ChatOpenAI(
     model="gpt-4",
@@ -248,7 +244,7 @@ crew = Crew(
 )
 
 memory = ConversationSummaryMemory(llm=llm)
-session_history: Dict[str, List[Dict[str, str]]] = {}
+session_history: Dict[str, Dict[str, Any]] = {}
 
 @app.post("/query")
 async def query_db(request: PromptRequest):
@@ -278,21 +274,21 @@ async def query_db(request: PromptRequest):
 
         # Save the conversation context externally
         if session_id not in session_history:
-            session_history[session_id] = []
-        session_history[session_id].append({"role": "User", "message": prompt})
-        session_history[session_id].append({"role": "EaseAI", "message": response})
+            session_history[session_id] = {"session_name": f"Session {len(session_history) + 1}", "history": []}
+        session_history[session_id]["history"].append({"role": "User", "message": prompt})
+        session_history[session_id]["history"].append({"role": "EaseAI", "message": response})
 
-        return {"response": response, "conversation": session_history[session_id]}
+        return {"response": response, "conversation": session_history[session_id]["history"]}
     except Exception as e:
         # Handling errors
         if "parsing error" in str(e).lower():
             clarifying_question = f"I encountered an error understanding your request: '{prompt}'. Can you please provide more details or clarify your question?"
             memory.save_context({"prompt": f"{prompt}"}, {"response": f"{clarifying_question}"})
             if session_id not in session_history:
-                session_history[session_id] = []
-            session_history[session_id].append({"role": "User", "message": prompt})
-            session_history[session_id].append({"role": "EaseAI", "message": clarifying_question})
-            return {"response": clarifying_question, "conversation": session_history[session_id]}
+                session_history[session_id] = {"session_name": f"session{len(session_history) + 1}", "history": []}
+            session_history[session_id]["history"].append({"role": "User", "message": prompt})
+            session_history[session_id]["history"].append({"role": "EaseAI", "message": clarifying_question})
+            return {"response": clarifying_question, "conversation": session_history[session_id]["history"]}
         
         if "Error code: 429" in str(e).lower():
             clarifying_question = f"I encountered an Token Limit error Too much Content Passed. understanding your request: '{prompt}'. Can you please provide more details or clarify your question?"
@@ -311,17 +307,18 @@ async def reset_memory(session_id: str):
 
 @app.get("/history/{session_id}")
 async def get_history(session_id: str):
-    return {"history": session_history.get(session_id, [])}
+    return {"history": session_history.get(session_id, {}).get("history", [])}
 
 @app.post("/create_session")
 async def create_session(request: CreateSessionRequest):
     session_id = str(uuid.uuid4())
-    session_history[session_id] = []
-    return {"session_id": session_id, "session_name": request.session_name}
+    session_name = f"Mohan {len(session_history) + 1}"
+    session_history[session_id] = {"session_name": session_name, "history": []}
+    return {"session_id": session_id, "session_name": session_name}
 
 @app.get("/sessions")
 async def get_sessions():
-    return {"sessions": list(session_history.keys())}
+    return {"sessions": [{"session_id": sid, "session_name": sdata["session_name"]} for sid, sdata in session_history.items()]}
 
 if __name__ == "__main__":
     import uvicorn
