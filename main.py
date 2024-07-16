@@ -240,8 +240,10 @@ if st.sidebar.button("Reset Conversation Memory"):
 # Display existing sessions in a list format
 sessions = get_sessions()
 for session in sessions:
-    if st.sidebar.button(session):
-        st.session_state['session_id'] = session
+    session_id = session["session_id"]
+    session_name = session["session_name"]
+    if st.sidebar.button(session_name):
+        st.session_state['session_id'] = session_id
         st.rerun()
 
 # Create a new session button
