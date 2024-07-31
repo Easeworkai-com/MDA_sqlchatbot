@@ -312,7 +312,7 @@ async def get_history(session_id: str):
 @app.post("/create_session")
 async def create_session(request: CreateSessionRequest):
     session_id = str(uuid.uuid4())
-    session_name = f"Mohan {len(session_history) + 1}"
+    session_name = f"Session {len(session_history) + 1}"
     session_history[session_id] = {"session_name": session_name, "history": []}
     return {"session_id": session_id, "session_name": session_name}
 
